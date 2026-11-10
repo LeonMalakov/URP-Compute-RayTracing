@@ -1,0 +1,76 @@
+#pragma kernel CSMain
+
+#define TRACE_GI
+
+#include "../ShaderLibrary/RayTracing.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+
+struct RayInfo
+{
+    half3 origin;
+    half3 direction;
+    half energy;
+};
+
+RWTexture2DArray<float4> _Result;
+int3 _ResultTextureSize;
+
+StructuredBuffer<RayInfo> _Rays;
+uint _RayCount;
+
+void debugWrite(uint3 start, uint3 end, float4 color)
+{
+    for(uint z = start.z; z <= end.z; z++)
+    {
+        for(uint y = start.y; y <= end.y; y++)
+        {
+            for(uint x = start.x; x <= end.x; x++)
+            {
+                _Result[uint3(x, y, z)] = color;
+            }
+        }
+    }
+}
+
+[numthreads(8,1,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    uint rayIndex = id.x;
+
+    if(rayIndex >= _RayCount)
+    {
+        return;
+    }
+    
+    RayInfo rayInfo = _Rays[rayIndex];
+    
+    half3 rayDirection = rayInfo.direction;
+    half3 rayOrigin = rayInfo.origin;
+    
+
+    TraceGIResult result = Trace(rayOrigin, rayDirection);
+    
+    if(result.hit)
+    {
+        if(result.lightmapIndex < 0 || result.lightmapIndex >= _ResultTextureSize.z)
+        {
+            return;
+        }
+        
+        uint3 coords = uint3(
+            result.lightmapUV.x * (_ResultTextureSize.x - 1),
+            result.lightmapUV.y * (_ResultTextureSize.y - 1),
+            result.lightmapIndex);
+        
+        float4 prev = _Result[coords];
+        float3 newColor = prev.rgb + float3(0.01, 0, 0);
+        _Result[coords] = float4(1, 0, 0, 1.0);
+    } else
+    {
+        debugWrite(uint3(0, 0, 0), uint3(32, 32, 0), float4(0, 1, 0, 1.0));
+    }
+    
+    // TODO: обновить энергию луча.
+    
+    //Result[id.xy] = hit ? half3(0.0, 0.0, 0.0) : half3(1.0, 0.0, 0.0);
+}
